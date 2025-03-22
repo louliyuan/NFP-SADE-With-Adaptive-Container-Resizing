@@ -6,6 +6,14 @@ This project implements an efficient irregualr texture nesting method via hybrid
 ## Installation
 To run this project, you need to install some Python libraries, which are listed in requirement.txt.
 
+Polygon3
+
+dxgrabber
+
+pyclipper
+
+matplotlib
+
 ## Usage
 Run the project: test_nfp.py
 
