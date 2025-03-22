@@ -1,0 +1,201 @@
+# -*- coding: utf-8 -*-
+import json
+from tools.nfp_utls import (
+    almost_equal,
+    rotate_polygon,
+    get_polygon_bounds,
+    polygon_area,
+)
+import copy
+import pyclipper
+import time
+
+class PlacementWorker:
+    def __init__(self, bin_polygon, paths, ids, rotations, config, nfp_cache):
+        self.bin_polygon = bin_polygon
+        self.paths = copy.deepcopy(paths)
+        self.ids = ids
+        self.rotations = rotations
+        self.config = config
+        self.nfpCache = nfp_cache or {}
+
+    def place_paths(self):
+        nfp_start = time.time()
+        if self.bin_polygon is None:
+            return None
+
+        rotated_paths = self.get_rotated_paths()
+        paths = rotated_paths
+        all_placements = []
+        fitness = 0
+        bin_area = abs(polygon_area(self.bin_polygon['points']))
+        min_width = None
+
+        while paths:
+            placed, placements = self.place_iteration(paths)
+            if min_width:
+                fitness += min_width / bin_area
+
+            paths = [path for path in paths if path not in placed]
+
+            if placements:
+                all_placements.extend(placements)
+            else:
+                break
+
+        fitness += 2 * len(paths)
+        nfp_end = time.time()
+        print(f'求解图形分布的时间: {nfp_end - nfp_start}')
+        print(f'placements:{all_placements}')
+        return {
+            'placements': all_placements,
+            'fitness': fitness,
+            'paths': paths,
+            'area': bin_area,
+        }
+
+    def get_rotated_paths(self):
+        """Rotate paths based on their specified rotation angles."""
+        rotated_paths = []
+        for path in self.paths:
+            rotated_path = rotate_polygon(path[1]['points'], path[2])
+            rotated_path['rotation'] = path[2]
+            rotated_path['source'] = path[1]['p_id']
+            rotated_path['p_id'] = path[0]
+            rotated_paths.append(rotated_path)
+        return rotated_paths
+
+    def place_iteration(self, paths):
+        """Attempt to place all paths in a single iteration."""
+        placed = []
+        placements = []
+        for path in paths:
+            bin_nfp_key = self.create_nfp_key('-1', path['p_id'], 0, path['rotation'], True)
+            bin_nfp = self.nfpCache.get(bin_nfp_key)
+            if not bin_nfp:
+                continue
+
+            if not self.check_nfps_for_placed_paths(placed, path):
+                continue
+
+            position = self.find_best_position(bin_nfp, placed, path, placements)
+            if position:
+                placed.append(path)
+                placements.append(position)
+
+        return placed, placements
+
+    def create_nfp_key(self, A, B, A_rotation, B_rotation, inside):
+        """Create a JSON key for NFP cache lookup."""
+        return json.dumps({
+            'A': A,
+            'B': B,
+            'inside': inside,
+            'A_rotation': A_rotation,
+            'B_rotation': B_rotation,
+        })
+
+    def check_nfps_for_placed_paths(self, placed, path):
+        """Check if all necessary NFPs are available in the cache for placed paths."""
+        for p in placed:
+            key = self.create_nfp_key(p['p_id'], path['p_id'], p['rotation'], path['rotation'], False)
+            if not self.nfpCache.get(key):
+                return False
+        return True
+
+    def find_best_position(self, bin_nfp, placed, path, placements):
+        """Find the best position for the current path considering already placed paths."""
+        position = self.find_initial_position(bin_nfp, path)
+        if not placed:
+            return position
+
+        clipper_bin_nfp = self.get_clipper_bin_nfp(bin_nfp)
+        clipper = pyclipper.Pyclipper()
+        self.add_placed_paths_to_clipper(clipper, placed, path, placements)
+        combine_nfp = clipper.Execute(pyclipper.CT_UNION, pyclipper.PFT_NONZERO, pyclipper.PFT_NONZERO)
+
+        if not combine_nfp:
+            return None
+
+        clipper = pyclipper.Pyclipper()
+        clipper.AddPaths(combine_nfp, pyclipper.PT_CLIP, True)
+        try:
+            clipper.AddPaths(clipper_bin_nfp, pyclipper.PT_SUBJECT, True)
+        except:
+            print('图形坐标出错', clipper_bin_nfp)
+
+        final_nfp = clipper.Execute(pyclipper.CT_DIFFERENCE, pyclipper.PFT_NONZERO, pyclipper.PFT_NONZERO)
+        final_nfp = pyclipper.CleanPolygons(final_nfp)
+        final_nfp = [polygon for polygon in final_nfp if len(polygon) >= 3]
+
+        if not final_nfp:
+            return None
+
+        final_nfp = [[{'x': p[0], 'y': p[1]} for p in polygon] for polygon in final_nfp]
+        return self.calculate_best_shift_vector(final_nfp, placed, path, placements)
+
+    def find_initial_position(self, bin_nfp, path):
+        """Find the initial position for the first path to be placed."""
+        position = None
+        for nfp in bin_nfp:
+            for point in nfp:
+                if position is None or point['x'] - path['points'][0]['x'] < position['x']:
+                    position = {
+                        'x': point['x'] - path['points'][0]['x'],
+                        'y': point['y'] - path['points'][0]['y'],
+                        'p_id': path['p_id'],
+                        'rotation': path['rotation'],
+                    }
+        return position
+
+    def get_clipper_bin_nfp(self, bin_nfp):
+        """Get bin NFP for clipper."""
+        return [[(p['x'], p['y']) for p in nfp] for nfp in bin_nfp]
+
+    def add_placed_paths_to_clipper(self, clipper, placed, path, placements):
+        """Add NFPs of placed paths to the clipper object."""
+        for j, p in enumerate(placed):
+            key = self.create_nfp_key(p['p_id'], path['p_id'], p['rotation'], path['rotation'], False)
+            nfp = self.nfpCache.get(key)
+            if not nfp:
+                continue
+            for n in nfp:
+                clone = [(np['x'] + placements[j]['x'], np['y'] + placements[j]['y']) for np in n]
+                clone = pyclipper.CleanPolygon(clone)
+                if len(clone) > 2:
+                    clipper.AddPath(clone, pyclipper.PT_SUBJECT, True)
+
+    def calculate_best_shift_vector(self, final_nfp, placed, path, placements):
+        """Calculate the best shift vector for the current path."""
+        min_area = None
+        min_x = None
+        shift_vector = None
+
+        for nf in final_nfp:
+            if abs(polygon_area(nf)) < 2:
+                continue
+
+            all_points = [{'x': p['x'] + placements[m]['x'], 'y': p['y'] + placements[m]['y']}
+                          for m in range(len(placed)) for p in placed[m]['points']]
+
+            for p_nf in nf:
+                shift_vector = {
+                    'x': p_nf['x'] - path['points'][0]['x'],
+                    'y': p_nf['y'] - path['points'][0]['y'],
+                    'p_id': path['p_id'],
+                    'rotation': path['rotation'],
+                }
+                all_points.extend(
+                    {'x': point['x'] + shift_vector['x'], 'y': point['y'] + shift_vector['y']}
+                    for point in path['points']
+                )
+                rect_bounds = get_polygon_bounds(all_points)
+                area = rect_bounds['width'] * 2 + rect_bounds['height']
+
+                if (min_area is None or area < min_area or almost_equal(min_area, area)) and (min_x is None or shift_vector['x'] <= min_x):
+                    min_area = area
+                    min_width = rect_bounds['width']
+                    position = shift_vector
+                    min_x = shift_vector['x']
+
+        return shift_vector

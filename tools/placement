@@ -1,0 +1,264 @@
+# -*- coding: utf-8 -*-
+import json
+from tools.nfp_utls import (
+    almost_equal,
+    rotate_polygon,
+    get_polygon_bounds,
+    polygon_area,
+)
+import copy
+import pyclipper
+import time
+
+class PlacementWorker:
+    def     __init__(self, bin_polygon, paths, ids, rotations, config, nfp_cache):
+        self.bin_polygon = bin_polygon
+        self.paths = copy.deepcopy(paths)
+        self.ids = ids  # 图形原来的ID顺序
+        self.rotations = rotations
+        self.config = config
+        self.nfpCache = nfp_cache or {}
+
+    def place_paths(self):
+        nfp_start = time.time()
+        # 检查容器是否为空
+        if self.bin_polygon is None:
+            return None
+
+        # 将路径按照给定的旋转角度进行旋转
+        rotated = list()
+        for i in range(0, len(self.paths)):
+            # 旋转当前路径
+            r = rotate_polygon(self.paths[i][1]['points'], self.paths[i][2])
+            #添加旋转角度和路径ID信息
+            r['rotation'] = self.paths[i][2]
+            r['source'] = self.paths[i][1]['p_id']
+            r['p_id'] = self.paths[i][0]
+            rotated.append(r)
+        # 赋值旋转后的路径
+        paths = rotated
+        # 用于保存所有放置数据的列表
+        all_placements = list()
+        # 基因组的适应值
+        fitness = 0
+        # 计算容器多边形的面积
+        bin_area = abs(polygon_area(self.bin_polygon['points']))
+        # 初始化最小宽度
+        min_width = None
+
+        # 当路径还有未放置的部分时，继续循环
+        while len(paths) > 0:
+            # 保存已放置的路径
+            placed = list()
+            # 保存放置位置
+            placements = list()
+            # 新开一个容器，适应度加 1（较低的适应度更好）
+            fitness += 1
+            # 遍历剩余的路径
+            for i in range(0, len(paths)):
+                path = paths[i]
+                # 为当前路径创建一个 JSON 键
+                key = json.dumps(
+                    {
+                        'A': '-1',
+                        'B': path['p_id'],
+                        'inside': True,
+                        'A_rotation': 0,
+                        'B_rotation': path['rotation'],
+                    }
+                )
+                # 获取容器和当前路径的NFP
+                binNfp = self.nfpCache.get(key)
+                # 如果不存在 NFP，跳过当前路径
+                if binNfp is None or len(binNfp) == 0:
+                    continue
+
+                # 检查是否有无法放置的路径
+                error = False
+
+                # 确保所有必要的 NFP 都存在
+                for p in placed:
+                    key = json.dumps(
+                        {
+                            'A': p['p_id'],
+                            'B': path['p_id'],
+                            'inside': False,
+                            'A_rotation': p['rotation'],
+                            'B_rotation': path['rotation'],
+                        }
+                    )
+                    nfp = self.nfpCache.get(key)
+                    if nfp is None:
+                        error = True
+                        break
+
+                # 如果缺少必要的 NFP，跳过当前路径
+                if error:
+                    continue
+
+                position = None
+                # 如果还没有已放置的路径，则选择初始位置
+                if len(placed) == 0:
+                    for j in range(0, len(binNfp)):
+                        for k in range(0, len(binNfp[j])):
+                            if position is None or (
+                                binNfp[j][k]['x'] - path['points'][0]['x']
+                                < position['x']
+                            ):
+                                position = {
+                                    'x': binNfp[j][k]['x'] - path['points'][0]['x'],
+                                    'y': binNfp[j][k]['y'] - path['points'][0]['y'],
+                                    'p_id': path['p_id'],
+                                    'rotation': path['rotation'],
+                                }
+                    # 保存放置位置
+                    placements.append(position)
+                    placed.append(path)
+                    continue
+                # 创建 Clipper 对象以处理路径之间的边界
+                clipper_bin_nfp = list()
+                for j in range(0, len(binNfp)):
+                    clipper_bin_nfp.append([[p['x'], p['y']] for p in binNfp[j]])
+
+                clipper = pyclipper.Pyclipper()
+                # 将已放置的路径添加到 Clipper
+                for j in range(0, len(placed)):
+                    p = placed[j]
+                    key = json.dumps(
+                        {
+                            'A': p['p_id'],
+                            'B': path['p_id'],
+                            'inside': False,
+                            'A_rotation': p['rotation'],
+                            'B_rotation': path['rotation'],
+                        }
+                    )
+                    nfp = self.nfpCache.get(key)
+
+                    if nfp is None:
+                        continue
+                    for k in range(0, len(nfp)):
+                        clone = [
+                            [np['x'] + placements[j]['x'], np['y'] + placements[j]['y']]
+                            for np in nfp[k]
+                        ]
+                        clone = pyclipper.CleanPolygon(clone)
+                        if len(clone) > 2:
+                            clipper.AddPath(clone, pyclipper.PT_SUBJECT, True)
+                # 将 Clipper 对象中的路径合并
+                combine_nfp = clipper.Execute(
+                    pyclipper.CT_UNION, pyclipper.PFT_NONZERO, pyclipper.PFT_NONZERO
+                )
+                if len(combine_nfp) == 0:
+                    continue
+                # 重新初始化 Clipper 对象并处理与容器的交集
+                clipper = pyclipper.Pyclipper()
+                clipper.AddPaths(combine_nfp, pyclipper.PT_CLIP, True)
+                try:
+                    clipper.AddPaths(clipper_bin_nfp, pyclipper.PT_SUBJECT, True)
+                except:
+                    print('图形坐标出错', clipper_bin_nfp)
+
+                # 使用 Clipper 对象进行差异化处理以确定最小非叠加区域
+                finalNfp = clipper.Execute(
+                    pyclipper.CT_DIFFERENCE,
+                    pyclipper.PFT_NONZERO,
+                    pyclipper.PFT_NONZERO,
+                )
+                if len(finalNfp) == 0:
+                    continue
+                # 清理 NFP 中小于 3 个点的多边形
+                finalNfp = pyclipper.CleanPolygons(finalNfp)
+
+                for j in range(len(finalNfp) - 1, -1, -1):
+                    if len(finalNfp[j]) < 3:
+                        finalNfp.pop(j)
+                # 如果没有有效的 NFP，跳过
+                if len(finalNfp) == 0:
+                    continue
+
+                finalNfp = [
+                    [{'x': p[0], 'y': p[1]} for p in polygon] for polygon in finalNfp
+                ]
+                # 初始化最小宽度和最小面积
+                min_width = None
+                min_area = None
+                min_x = None
+                # 找到最小的包围矩形
+                for nf in finalNfp:
+                    # 忽略小面积
+                    if abs(polygon_area(nf)) < 2:
+                        continue
+                    # 创建所有点的列表
+                    for p_nf in nf:
+                        # 生成nfp多边形
+                        all_points = list()
+                        for m in range(0, len(placed)):
+                            for p in placed[m]['points']:
+                                all_points.append(
+                                    {
+                                        'x': p['x'] + placements[m]['x'],
+                                        'y': p['y'] + placements[m]['y'],
+                                    }
+                                )
+                        # path 坐标,计算位移向量
+                        shift_vector = {
+                            'x': p_nf['x'] - path['points'][0]['x'],
+                            'y': p_nf['y'] - path['points'][0]['y'],
+                            'p_id': path['p_id'],
+                            'rotation': path['rotation'],
+                        }
+
+                        # 找新坐标后的最小矩形,根据位移向量找到最小矩形包围盒
+                        for m in range(0, len(path['points'])):
+                            all_points.append(
+                                {
+                                    'x': path['points'][m]['x'] + shift_vector['x'],
+                                    'y': path['points'][m]['y'] + shift_vector['y'],
+                                }
+                            )
+
+                        rect_bounds = get_polygon_bounds(all_points)
+                        # weigh width more, to help compress in direction of gravity
+                        # 计算最小面积
+                        area = rect_bounds['width'] * 2 + rect_bounds['height']
+
+                        if (
+                            min_area is None
+                            or area < min_area
+                            or almost_equal(min_area, area)
+                        ) and (min_x is None or shift_vector['x'] <= min_x):
+                            min_area = area
+                            min_width = rect_bounds['width']
+                            position = shift_vector
+                            min_x = shift_vector['x']
+                # 如果找到有效位置，将路径和位置添加到放置列表中
+                if position:
+                    placed.append(path)
+                    placements.append(position)
+            # 根据最小宽度调整适应度
+            if min_width:
+                fitness += min_width / bin_area
+            # 从路径列表中删除已放置的路径
+            for p in placed:
+                p_id = paths.index(p)
+                if p_id >= 0:
+                    paths.pop(p_id)
+            # 如果找到放置位置，将其添加到最终的放置列表中
+            if placements and len(placements) > 0:
+                all_placements.append(placements)
+
+            else:
+                # 如果没有成功放置，可能存在错误
+                break
+        # 对于未放置的路径，适应度增加
+        fitness += 2 * len(paths)
+        nfp_end = time.time()
+        print(f'求解图形分布的时间:{nfp_end - nfp_start}')
+        # 返回放置结果、适应度、未放置的路径和容器面积
+        return {
+            'placements': all_placements,
+            'fitness': fitness,
+            'paths': paths,
+            'area': bin_area,
+        }
