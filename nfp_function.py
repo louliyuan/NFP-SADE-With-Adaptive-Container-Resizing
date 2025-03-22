@@ -542,6 +542,7 @@ class SADE():
         # SADE算法的参数
         self.PoolSize = self.config['populationSize']
         self.SelectdSize = int(self.PoolSize / 2)
+        self.cross_rate = self.config['cross_rate']
         self.Dim = 2
         self.xmin = [-10.0, -10.0]
         self.xmax = [10.0, 10.0]
@@ -610,7 +611,7 @@ class SADE():
             last = self.ActualSize - 1
             self.CH[last], self.CH[dead] = self.CH[dead], self.CH[last]
             self.Force[dead] = self.Force[last]
-            self.ActualSize -= 1
+            self.ActualSize += 1
 
     def MUTATE(self, individual):
         self.compute_radioactivity()
@@ -631,26 +632,27 @@ class SADE():
                 self.ActualSize += 1
         return clone
 
-    def BOUNDARY_MUTATE(self):
-        for _ in range(self.mutants):
-            p = random.uniform(0, 1)
-            if p <= self.reduced_radioactivity:
-                index = random.randint(0, self.SelectdSize - 1)
-                self.CH[index]['placement'] = [
-                    self.CH[index]['placement'][j] + random.uniform(-self.mutagen, self.mutagen) for j in
-                    range(self.Dim)]
-                self.ActualSize += 1
+    # def BOUNDARY_MUTATE(self):
+    #     for _ in range(self.mutants):
+    #         p = random.uniform(0, 1)
+    #         if p <= self.reduced_radioactivity:
+    #             index = random.randint(0, self.SelectdSize - 1)
+    #             self.CH[index]['placement'] = [
+    #                 self.CH[index]['placement'][j] + random.uniform(-self.mutagen, self.mutagen) for j in
+    #                 range(self.Dim)]
+    #             self.ActualSize += 1
 
     def CROSS(self):
         while self.ActualSize < self.PoolSize:
-            i1 = random.randint(0, self.SelectdSize - 1)
-            i2 = random.randint(1, self.SelectdSize - 1)
+            i1 = random.randint(0, self.SelectdSize)
+            i2 = random.randint(1, self.SelectdSize)
             if i1 == i2:
                 i2 -= 1
-            i3 = random.randint(0, self.SelectdSize - 1)
-            self.CH['placement'].append([self.CH[i3]['placement'][j] + self.cross_rate * (
+            i3 = random.randint(0, self.SelectdSize)
+
+            self.CH[self.ActualSize]['placement'].append([self.CH[i3]['placement'][j] + self.cross_rate * (
                         self.CH[i2]['placement'][j] - self.CH[i1]['placement'][j]) for j in range(self.Dim)])
-            self.ActualSize += 1
+            self.ActualSize -= 1
 
     def to_continue(self, bsf):
         return abs(self.top - bsf) > 0.001
@@ -665,6 +667,7 @@ class SADE():
             new_CH.append(mutated_individual)  # 添加变异后的个体到新种群
         self.CH = new_CH
         self.SELECT()
+
 
 
 # GA算法

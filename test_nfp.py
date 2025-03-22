@@ -9,7 +9,7 @@ if __name__ == '__main__':
     start=time.time()
     n = Nester()
     # s=input_utls.parse_csv_to_list('C:/Users\Zhan\Downloads/no_fit_polygon_py3-master/no_fit_polygon_py3-master/test_data/convex_hulls.csv')
-    s = input_utls.parse_csv_to_list('/Users/louliyuan/Desktop/纹理重组/no_fit_polygon_py3-master/测试数据1-1/convex_hulls008.csv')
+    s = input_utls.parse_csv_to_list('/Users/louliyuan/Desktop/纹理重组/no_fit_polygon_py3-master/测试数据1-1/convex_hulls004.csv')
     # s = input_utls.input_polygon('dxf_file/E6.dxf')
     if s is None:
         print("Error: The parsed data is None.")
