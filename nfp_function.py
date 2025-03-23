@@ -51,6 +51,7 @@ class Nester:
             'useHoles': False,  # 是否有洞，暂时都是没有洞
             'exploreConcave': False,  # 寻找凹面，暂时是否
         }
+        # SADE算法的参数
         self.SADE_config = {
             'curveTolerance': 0.3,  # 允许的最大误差转换贝济耶和圆弧线段。在SVG的单位。更小的公差将需要更长的时间来计算
             'spacing': SPACING,  # 组件间的间隔
@@ -526,9 +527,9 @@ def draw_polygons(solution, output_folder, ids, p_ids):
 
         print(f"已保存多边形图片：{output_path}")
 
-# Sade算法
+# SADE算法
 class SADE():
-    def __init__(self, adam, bin_polygon, config, nester_instance=None):
+    def __init__(self, adam, bin_polygon, SADE_config, nester_instance=None):
         # 初始化
         self.Nester = nester_instance
         self.bin_bounds = bin_polygon['points']
@@ -536,7 +537,7 @@ class SADE():
             'width': bin_polygon['width'],
             'height': bin_polygon['height'],
         }
-        self.config = config
+        self.config = SADE_config
         self.bin_polygon = bin_polygon
 
         # SADE算法的参数
@@ -611,7 +612,7 @@ class SADE():
             last = self.ActualSize - 1
             self.CH[last], self.CH[dead] = self.CH[dead], self.CH[last]
             self.Force[dead] = self.Force[last]
-            self.ActualSize += 1
+            self.ActualSize -= 1
 
     def MUTATE(self, individual):
         self.compute_radioactivity()
@@ -632,16 +633,6 @@ class SADE():
                 self.ActualSize += 1
         return clone
 
-    # def BOUNDARY_MUTATE(self):
-    #     for _ in range(self.mutants):
-    #         p = random.uniform(0, 1)
-    #         if p <= self.reduced_radioactivity:
-    #             index = random.randint(0, self.SelectdSize - 1)
-    #             self.CH[index]['placement'] = [
-    #                 self.CH[index]['placement'][j] + random.uniform(-self.mutagen, self.mutagen) for j in
-    #                 range(self.Dim)]
-    #             self.ActualSize += 1
-
     def CROSS(self):
         while self.ActualSize < self.PoolSize:
             i1 = random.randint(0, self.SelectdSize)
@@ -652,7 +643,7 @@ class SADE():
 
             self.CH[self.ActualSize]['placement'].append([self.CH[i3]['placement'][j] + self.cross_rate * (
                         self.CH[i2]['placement'][j] - self.CH[i1]['placement'][j]) for j in range(self.Dim)])
-            self.ActualSize -= 1
+            self.ActualSize += 1
 
     def to_continue(self, bsf):
         return abs(self.top - bsf) > 0.001
