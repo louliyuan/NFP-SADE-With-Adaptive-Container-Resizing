@@ -548,10 +548,6 @@ class SADE():
         self.xmin = [-10.0, -10.0]
         self.xmax = [10.0, 10.0]
 
-        self.y0min = 10.0
-        self.y0max = 50.0
-        self.y_0 = 0.0
-        self.x_0 = [0.0] * 2  # 根据具体问题设置维度
         self.ActualSize = 0
         self.Force = [0.0] * self.PoolSize
         self.reduced_radioactivity = 0.0
