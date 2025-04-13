@@ -120,6 +120,15 @@ class Nester:
         if not self.container:
             self.container = {}
 
+        max_polygon_width = 0
+        max_polygon_result=next((item for item in self.shapes if item['p_id'] == '1'), None)
+        if max_polygon_result:
+            points=max_polygon_result.get("points", [])
+            x_coords = [p['x'] for p in points]
+            y_coords = [p['y'] for p in points]
+            min_x, max_x = min(x_coords), max(x_coords)
+            max_polygon_width = max_x - min_x
+
         total_area = sum(shape['area'] for shape in self.shapes)
         total_bounding_box_area = 0  # 初始化包围盒总面积
 
@@ -149,16 +158,20 @@ class Nester:
 
         width = side_length
         height = side_length
-        area_1 = side_length * side_length
-        # rate_1 = total_area/area_1
 
-        # 如果多边形填充不到容器面积的一半，调整高度
-        if height > 1 and total_area <= (area_1 / 2):
-            height //= 2
+        # # 如果多边形填充不到容器面积的一半，调整高度
+        # if height > 1 and total_area <= (area_1 / 2):
+        #     height //= 2
 
-        # 如果总体的占用率不超过88%，调整宽度
-        if width > 1 and total_area <= (area_1 * 0.96):
-            width //= 2
+        # # 如果总体的占用率不超过88%，调整宽度
+        # if width > 1 and total_area <= (area_1 * 0.96):
+        #     width //= 2
+         if not self.rest_paths:
+            while width > 1 and total_area / (width * height) < 0.9 and max_polygon_width < width:
+                width //= 2
+        else:
+            while height > 1 and total_area <= (width * height / 2):
+                height //= 2
 
         self.container['points'] = [
             {'x': 0, 'y': 0},
@@ -351,7 +364,7 @@ class Nester:
                             nfp[i].reverse()
         return {'key': pair['key'], 'value': nfp}
 
-    def generate_nfp(self, nfp):
+        def generate_nfp(self, nfp):
         if nfp:
             for i in range(len(nfp)):
                 if nfp[i]:
@@ -362,6 +375,8 @@ class Nester:
         result = self.worker.place_paths()
         # 更新 Nester 的 rest_paths
         self.rest_paths = self.worker.rest_paths
+        total_length = sum(len(sublist) for sublist in self.rest_paths)
+        logger.info(f"剩余多边形的个数：{total_length}")
         return result
         # return self.worker.place_paths()
 
