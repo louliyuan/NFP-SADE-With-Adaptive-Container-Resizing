@@ -470,6 +470,14 @@ def plot_shapes(shapes, output_folder):
 def draw_result(shift_data, polygons, bin_polygon, bin_bounds, file_name):
     # output_floder=r'/home/yujingle/no_fit_polygon/polygons'
     # plot_shapes(polygons,output_floder)
+    # 将 shift_data 写入一个 txt 文件
+    with open(f"shift_data_{file_name}.txt", "w", encoding="utf-8") as f:
+        json.dump(shift_data, f, ensure_ascii=False, indent=2)
+
+    # 将 polygons 写入另一个 txt 文件
+    with open(f"polygons_{file_name}.txt", "w", encoding="utf-8") as f:
+        json.dump(polygons, f, ensure_ascii=False, indent=2)
+        
     shapes = list()
     for polygon in polygons:
         contour = [[p['x'], p['y']] for p in polygon['points']]
