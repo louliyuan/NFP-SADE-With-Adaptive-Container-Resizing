@@ -236,8 +236,4 @@ If you find this work useful in your research, please consider citing:
   publisher = {American Society for Photogrammetry and Remote Sensing},
   doi       = {10.14358/PERS.25-00038R3},
   url       = {https://doi.org/10.14358/PERS.25-00038R3}
-}```
-
-## License
-
-MIT License
+}
