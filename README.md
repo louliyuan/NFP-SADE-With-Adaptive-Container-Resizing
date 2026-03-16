@@ -1,4 +1,4 @@
-# NFP-SADE: Irregular Shape Nesting with Adaptive Container Resizing
+# An Efficient Irregular Texture Nesting Method via Hybrid NFP-SADE with Adaptive Container Resizing
 [![Paper](https://img.shields.io/badge/Paper-PERS%202025-blue?style=flat-square&logo=bookstack)](https://doi.org/10.14358/PERS.25-00038R3)
 [![Open Access](https://img.shields.io/badge/Open%20Access-CC%20BY--NC--ND-green?style=flat-square)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
 
