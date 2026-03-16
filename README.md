@@ -1,4 +1,6 @@
 # NFP-SADE: Irregular Shape Nesting with Adaptive Container Resizing
+[![Paper](https://img.shields.io/badge/Paper-PERS%202025-blue?style=flat-square&logo=bookstack)](https://doi.org/10.14358/PERS.25-00038R3)
+[![Open Access](https://img.shields.io/badge/Open%20Access-CC%20BY--NC--ND-green?style=flat-square)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
 
 > An efficient Python implementation of irregular polygon nesting using the **No-Fit Polygon (NFP)** algorithm combined with **Self-Adaptive Differential Evolution (SADE)**, featuring automatic container size optimization.
 
@@ -218,6 +220,23 @@ For complete project documentation, see the `docs/` directory:
 - Storn, R., & Price, K. (1997). "Differential Evolution - A Simple and Efficient Heuristic for Global Optimization over Continuous Spaces"
 
 ---
+
+## 📄 Citation
+
+If you find this work useful in your research, please consider citing:
+```bibtex
+@article{lou2025nfpsade,
+  title     = {An Efficient Irregular Texture Nesting Method via Hybrid {NFP}-{SADE} with Adaptive Container Resizing},
+  author    = {Lou, Liyuan and Li, Wanyun and Yu, Jingle and Wang, Xin and Zhan, Zongqian},
+  journal   = {Photogrammetric Engineering \& Remote Sensing},
+  volume    = {91},
+  number    = {11},
+  pages     = {681--691},
+  year      = {2025},
+  publisher = {American Society for Photogrammetry and Remote Sensing},
+  doi       = {10.14358/PERS.25-00038R3},
+  url       = {https://doi.org/10.14358/PERS.25-00038R3}
+}
 
 ## License
 
